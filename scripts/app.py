@@ -20,17 +20,17 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "language_mode" not in st.session_state:
-    st.session_state.language_mode = "Mix"  # default: natural Urdu-English mix
+    st.session_state.language_mode = "Mix"
 
 if "temperature" not in st.session_state:
     st.session_state.temperature = 0.8
 
 # Re-create runnable when language or temp changes
-if "runnable" not in st.session_state or \
-   "last_lang" not in st.session_state or \
-   "last_temp" not in st.session_state or \
-   st.session_state.last_lang != st.session_state.language_mode or \
-   st.session_state.last_temp != st.session_state.temperature:
+if ("runnable" not in st.session_state or
+    "last_lang" not in st.session_state or
+    "last_temp" not in st.session_state or
+    st.session_state.last_lang != st.session_state.language_mode or
+    st.session_state.last_temp != st.session_state.temperature):
 
     st.session_state.runnable = get_runnable(
         st.session_state.profile,
@@ -48,15 +48,28 @@ if "runnable" not in st.session_state or \
 st.sidebar.title("Shadow 💙")
 st.sidebar.markdown("Abdulrehman کا ڈیجیٹل ٹوئن")
 
-# Language choice
+# Language choice – fixed mapping
 st.sidebar.subheader("زبان / Language")
-lang = st.sidebar.radio(
+
+language_options = ["English", "Urdu", "Mix (Urdu + English)"]
+current_option = {
+    "English": "English",
+    "Urdu": "Urdu",
+    "Mix": "Mix (Urdu + English)"
+}.get(st.session_state.language_mode, "Mix (Urdu + English)")
+
+selected = st.sidebar.radio(
     "Shadow کس زبان میں بات کرے؟",
-    options=["English", "Urdu", "Mix (Urdu + English)"],
-    index=["English", "Urdu", "Mix (Urdu + English)"].index(st.session_state.language_mode),
-    key="lang_radio"
+    options=language_options,
+    index=language_options.index(current_option)
 )
-st.session_state.language_mode = {"English": "English", "Urdu": "Urdu", "Mix (Urdu + English)": "Mix"}[lang]
+
+# Convert display text back to short key
+st.session_state.language_mode = {
+    "English": "English",
+    "Urdu": "Urdu",
+    "Mix (Urdu + English)": "Mix"
+}[selected]
 
 # Temperature control
 st.sidebar.subheader("Creativity")
