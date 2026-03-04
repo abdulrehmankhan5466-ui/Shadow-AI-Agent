@@ -23,9 +23,9 @@ if "language_mode" not in st.session_state:
     st.session_state.language_mode = "Mix"
 
 if "temperature" not in st.session_state:
-    st.session_state.temperature = 0.8
+    st.session_state.temperature = 0.85
 
-# Re-create runnable when language or temp changes
+# Re-create runnable only when needed
 if ("runnable" not in st.session_state or
     "last_lang" not in st.session_state or
     "last_temp" not in st.session_state or
@@ -42,59 +42,74 @@ if ("runnable" not in st.session_state or
     st.session_state.last_temp = st.session_state.temperature
 
 # ────────────────────────────────────────────────
+# Helpers for language-aware text
+# ────────────────────────────────────────────────
+
+def txt(en, ur):
+    if st.session_state.language_mode == "Urdu":
+        return ur
+    elif st.session_state.language_mode == "English":
+        return en
+    else:
+        return f"{en} / {ur}" if en and ur else (en or ur)
+
+# ────────────────────────────────────────────────
 # Sidebar
 # ────────────────────────────────────────────────
 
-st.sidebar.title("Shadow 💙")
-st.sidebar.markdown("Abdulrehman کا ڈیجیٹل ٹوئن")
+st.sidebar.title(txt("Shadow", "شیڈو") + " 💙")
+st.sidebar.markdown(txt("Abdulrehman's digital twin", "عبدالرحمان کا ڈیجیٹل ٹوئن"))
 
-# Language choice – fixed mapping
-st.sidebar.subheader("زبان / Language")
+# Language selector
+st.sidebar.subheader(txt("Language", "زبان"))
 
-language_options = ["English", "Urdu", "Mix (Urdu + English)"]
-current_option = {
-    "English": "English",
-    "Urdu": "Urdu",
-    "Mix": "Mix (Urdu + English)"
-}.get(st.session_state.language_mode, "Mix (Urdu + English)")
+lang_options = ["English", "Urdu", "Mix"]
+lang_display = {
+    "English": txt("English", "انگریزی"),
+    "Urdu": txt("Urdu", "اردو"),
+    "Mix": txt("Mix (Urdu + English)", "مکس (اردو + انگریزی)")
+}
 
-selected = st.sidebar.radio(
-    "Shadow کس زبان میں بات کرے؟",
-    options=language_options,
-    index=language_options.index(current_option)
+selected_display = st.sidebar.radio(
+    txt("Reply language", "جواب کی زبان"),
+    options=[lang_display[k] for k in lang_options],
+    index=lang_options.index(st.session_state.language_mode)
 )
 
-# Convert display text back to short key
-st.session_state.language_mode = {
-    "English": "English",
-    "Urdu": "Urdu",
-    "Mix (Urdu + English)": "Mix"
-}[selected]
+# Map back to internal key
+for k, v in lang_display.items():
+    if v == selected_display:
+        st.session_state.language_mode = k
+        break
 
-# Temperature control
-st.sidebar.subheader("Creativity")
+# Temperature
+st.sidebar.subheader(txt("Creativity", "تخلیقی صلاحیت"))
 st.session_state.temperature = st.sidebar.slider(
-    "Temperature (creativity level)",
+    txt("Temperature", "درجہ حرارت"),
     0.6, 1.2, st.session_state.temperature, 0.05,
-    help="Lower = more focused & safe\nHigher = more creative & random"
+    help=txt("Lower = more focused\nHigher = more creative", "کم = زیادہ سنجیدہ\nزیادہ = زیادہ تخلیقی")
 )
 
-if st.sidebar.button("🆕 New Chat (Clear messages only)"):
-    st.session_state.messages = []
-    st.rerun()
+col1, col2 = st.sidebar.columns(2)
 
-if st.sidebar.button("Clear Everything (Memory + Chat)"):
-    st.session_state.messages = []
-    st.session_state.memory.clear()
-    st.rerun()
+with col1:
+    if st.button(txt("New Chat", "نیا چیٹ"), use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
-if st.sidebar.button("What do you know about me?"):
+with col2:
+    if st.button(txt("Clear All", "سب صاف"), use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.memory.clear()
+        st.rerun()
+
+if st.sidebar.button(txt("What I know about you", "تیرے بارے میں کیا جانتا ہوں")):
     facts = st.session_state.profile.get("other_facts", [])
     if facts:
         facts_md = "\n".join(f"- {f}" for f in facts)
-        msg = f"**جو میں تیرے بارے میں جانتا ہوں:**\n\n{facts_md}"
+        msg = txt("**What I remember:**", "**جو یاد ہے:**") + f"\n\n{facts_md}"
     else:
-        msg = "ابھی زیادہ کچھ خاص سیو نہیں ہوا یار۔ کچھ بتا نا 😄"
+        msg = txt("Nothing special saved yet — tell me more!", "ابھی کچھ خاص سیو نہیں — کچھ بتا یار!")
     st.session_state.messages.append({"role": "assistant", "content": msg})
     st.rerun()
 
@@ -102,22 +117,22 @@ st.sidebar.markdown("---")
 st.sidebar.caption("Profile → data/user_profile.json")
 
 # ────────────────────────────────────────────────
-# Main Area
+# Main area
 # ────────────────────────────────────────────────
 
-st.title("Shadow – Abdulrehman کا ٹوئن 😈💙")
+st.title(txt("Shadow – Your Digital Twin", "شیڈو – تیرا ڈیجیٹل ٹوئن") + " 💙")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("کیا حال ہے یار؟ کچھ بتا... 😏"):
+if prompt := st.chat_input(txt("What's on your mind?", "کیا سوچ رہا ہے یار؟")):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Shadow سوچ رہا ہے..."):
+        with st.spinner(txt("Shadow is thinking...", "شیڈو سوچ رہا ہے...")):
             message_placeholder = st.empty()
             full_response = ""
 
@@ -131,7 +146,7 @@ if prompt := st.chat_input("کیا حال ہے یار؟ کچھ بتا... 😏"):
                     if hasattr(chunk, "content"):
                         full_response += chunk.content
                         message_placeholder.markdown(full_response + "▌")
-                    time.sleep(0.015)
+                    time.sleep(0.01)
 
                 message_placeholder.markdown(full_response)
 
@@ -142,9 +157,12 @@ if prompt := st.chat_input("کیا حال ہے یار؟ کچھ بتا... 😏"):
                 force = any(x in lower for x in ["wabloo", "save this", "remember", "یاد رکھ"])
                 if force or any(x in lower for x in ["i like", "مجھے پسند", "i hate", "نہیں پسند", "my favorite"]):
                     if learn_new_fact(st.session_state.profile, prompt.strip()):
-                        st.info("✅ یہ بات سیو کر لی یار!", icon="🧠")
+                        st.info(txt("✅ Saved as fact!", "✅ یہ بات سیو ہو گئی!"), icon="🧠")
 
             except Exception as e:
-                err = f"ارے یار کچھ تو خراب ہو گیا: {str(e)}\nOllama چل رہا ہے نا؟ (ollama serve)"
+                err = txt(
+                    f"Oops — something broke: {str(e)}\nIs Ollama running? (ollama serve)",
+                    f"یار کچھ خراب ہو گیا: {str(e)}\nاولاما چل رہا ہے نا؟ (ollama serve)"
+                )
                 st.error(err)
                 st.session_state.messages.append({"role": "assistant", "content": err})
