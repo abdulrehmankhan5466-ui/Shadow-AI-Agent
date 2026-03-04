@@ -1,15 +1,13 @@
-# scripts/app.py
-
 import streamlit as st
 from datetime import datetime
 import time
 
-from facts import load_profile, save_profile, learn_new_fact
+from facts import load_profile, learn_new_fact
 from llm import get_runnable
 from langchain_community.chat_message_histories import ChatMessageHistory
 
 # ────────────────────────────────────────────────
-# Config & Session State
+# Session State
 # ────────────────────────────────────────────────
 
 if "profile" not in st.session_state:
@@ -18,20 +16,61 @@ if "profile" not in st.session_state:
 if "memory" not in st.session_state:
     st.session_state.memory = ChatMessageHistory()
 
-if "runnable" not in st.session_state:
-    st.session_state.runnable = get_runnable(st.session_state.profile, st.session_state.memory)
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "language_mode" not in st.session_state:
+    st.session_state.language_mode = "Mix"  # default: natural Urdu-English mix
+
+if "temperature" not in st.session_state:
+    st.session_state.temperature = 0.8
+
+# Re-create runnable when language or temp changes
+if "runnable" not in st.session_state or \
+   "last_lang" not in st.session_state or \
+   "last_temp" not in st.session_state or \
+   st.session_state.last_lang != st.session_state.language_mode or \
+   st.session_state.last_temp != st.session_state.temperature:
+
+    st.session_state.runnable = get_runnable(
+        st.session_state.profile,
+        st.session_state.memory,
+        st.session_state.language_mode,
+        st.session_state.temperature
+    )
+    st.session_state.last_lang = st.session_state.language_mode
+    st.session_state.last_temp = st.session_state.temperature
 
 # ────────────────────────────────────────────────
 # Sidebar
 # ────────────────────────────────────────────────
 
 st.sidebar.title("Shadow 💙")
-st.sidebar.markdown("Abdulrehman's digital twin")
+st.sidebar.markdown("Abdulrehman کا ڈیجیٹل ٹوئن")
 
-if st.sidebar.button("Clear Chat & Memory"):
+# Language choice
+st.sidebar.subheader("زبان / Language")
+lang = st.sidebar.radio(
+    "Shadow کس زبان میں بات کرے؟",
+    options=["English", "Urdu", "Mix (Urdu + English)"],
+    index=["English", "Urdu", "Mix (Urdu + English)"].index(st.session_state.language_mode),
+    key="lang_radio"
+)
+st.session_state.language_mode = {"English": "English", "Urdu": "Urdu", "Mix (Urdu + English)": "Mix"}[lang]
+
+# Temperature control
+st.sidebar.subheader("Creativity")
+st.session_state.temperature = st.sidebar.slider(
+    "Temperature (creativity level)",
+    0.6, 1.2, st.session_state.temperature, 0.05,
+    help="Lower = more focused & safe\nHigher = more creative & random"
+)
+
+if st.sidebar.button("🆕 New Chat (Clear messages only)"):
+    st.session_state.messages = []
+    st.rerun()
+
+if st.sidebar.button("Clear Everything (Memory + Chat)"):
     st.session_state.messages = []
     st.session_state.memory.clear()
     st.rerun()
@@ -40,73 +79,59 @@ if st.sidebar.button("What do you know about me?"):
     facts = st.session_state.profile.get("other_facts", [])
     if facts:
         facts_md = "\n".join(f"- {f}" for f in facts)
-        msg = f"**What I remember about you so far:**\n\n{facts_md}"
+        msg = f"**جو میں تیرے بارے میں جانتا ہوں:**\n\n{facts_md}"
     else:
-        msg = "Right now — not much extra stuff saved. Tell me more yaar 😄"
-    
+        msg = "ابھی زیادہ کچھ خاص سیو نہیں ہوا یار۔ کچھ بتا نا 😄"
     st.session_state.messages.append({"role": "assistant", "content": msg})
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Profile saved to:\n`{st.session_state.profile}`")
+st.sidebar.caption("Profile → data/user_profile.json")
 
 # ────────────────────────────────────────────────
 # Main Area
 # ────────────────────────────────────────────────
 
-st.title("Shadow – Your Digital Twin")
+st.title("Shadow – Abdulrehman کا ٹوئن 😈💙")
 
-# Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Chat input
-if prompt := st.chat_input("Kya scene hai bro? 😏"):
-    # Add user message
+if prompt := st.chat_input("کیا حال ہے یار؟ کچھ بتا... 😏"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Assistant response with streaming
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
+        with st.spinner("Shadow سوچ رہا ہے..."):
+            message_placeholder = st.empty()
+            full_response = ""
 
-        try:
-            # Stream the response
-            stream = st.session_state.runnable.stream(
-                {"input": prompt},
-                config={"configurable": {"session_id": "abdulrehman"}}
-            )
+            try:
+                stream = st.session_state.runnable.stream(
+                    {"input": prompt},
+                    config={"configurable": {"session_id": "abdulrehman"}}
+                )
 
-            for chunk in stream:
-                if hasattr(chunk, "content"):
-                    full_response += chunk.content
-                    message_placeholder.markdown(full_response + "▌")
-                time.sleep(0.01)  # slight delay for smooth feel
+                for chunk in stream:
+                    if hasattr(chunk, "content"):
+                        full_response += chunk.content
+                        message_placeholder.markdown(full_response + "▌")
+                    time.sleep(0.015)
 
-            message_placeholder.markdown(full_response)
+                message_placeholder.markdown(full_response)
 
-            # Save assistant reply to history
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-            # ── Fact learning logic ──
-            lower_prompt = prompt.lower()
-            force_save = any(kw in lower_prompt for kw in ["wabloo", "woble", "save this", "remember that"])
+                # Fact learning
+                lower = prompt.lower()
+                force = any(x in lower for x in ["wabloo", "save this", "remember", "یاد رکھ"])
+                if force or any(x in lower for x in ["i like", "مجھے پسند", "i hate", "نہیں پسند", "my favorite"]):
+                    if learn_new_fact(st.session_state.profile, prompt.strip()):
+                        st.info("✅ یہ بات سیو کر لی یار!", icon="🧠")
 
-            # Very simple keyword-based trigger for now
-            fact_keywords = [
-                "i like", "i love", "i hate", "i don't like", "i prefer", "my favorite",
-                "i am", "my name is", "i work as", "i live in", "i use"
-            ]
-            should_consider = force_save or any(kw in lower_prompt for kw in fact_keywords)
-
-            if should_consider:
-                if learn_new_fact(st.session_state.profile, prompt.strip()):
-                    st.info("✅ Saved that as an important fact about you!", icon="🧠")
-
-        except Exception as e:
-            error_msg = f"Oops — something broke: {str(e)}\n\nMake sure Ollama is running (`ollama serve`)"
-            st.error(error_msg)
-            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+            except Exception as e:
+                err = f"ارے یار کچھ تو خراب ہو گیا: {str(e)}\nOllama چل رہا ہے نا؟ (ollama serve)"
+                st.error(err)
+                st.session_state.messages.append({"role": "assistant", "content": err})
