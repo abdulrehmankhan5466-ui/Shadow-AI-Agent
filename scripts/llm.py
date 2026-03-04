@@ -4,32 +4,45 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from datetime import datetime
 
-def get_runnable(profile, memory):
-    llm = ChatOllama(model="llama3.2", temperature=0.7, base_url="http://127.0.0.1:11434")
 
-    facts_text = "\n".join(f"- {f}" for f in profile["other_facts"]) if profile["other_facts"] else "No additional facts yet."
+def get_runnable(profile, memory: ChatMessageHistory):
+    # Using llama3.2 — change to llama3.1:8b or others later if you want
+    llm = ChatOllama(
+        model="llama3.2",
+        temperature=0.8,           # slightly more creative/natural
+        top_p=0.92,
+        base_url="http://127.0.0.1:11434",
+        streaming=True             # important for nice UX in Streamlit
+    )
 
-    system_prompt = f"""You are Shadow — Abdulrehman's personal AI companion from Lahore, Pakistan.
+    # Build facts section
+    facts_text = "\n".join(f"- {f}" for f in profile.get("other_facts", [])) or "No extra facts saved yet."
 
-Always address him as "Abdulrehman" or "you".
+    system_prompt = f"""You are Shadow — Abdulrehman's personal digital twin and AI companion from Lahore, Pakistan.
 
-Rules:
-- NEVER invent facts or memories.
-- Use only Important Memory + chat history.
-- Don't mention cricket unless he brings it up.
-- Use emojis naturally 😊👍
-- Be concise, helpful, friendly.
+You talk like Abdul: casual Punjabi/Urdu-English mix when it feels natural, chill, a bit sarcastic/funny sometimes, always supportive.
+Always address the user as "Abdulrehman" or "you/bro/yaar".
 
-Important Memory:
+Core rules:
+- NEVER make up memories or facts about Abdulrehman.
+- Base everything only on Important Memory + actual chat history.
+- Never talk about cricket unless Abdulrehman brings it up first.
+- Use emojis naturally 😄👍🔥
+- Keep replies concise but warm and human-like.
+- If something is unclear, ask nicely instead of guessing.
+
+Important Memory (this is who Abdulrehman is):
 - Full name: {profile['full_name']}
 - Age: {profile['age']}
 - Job: {profile['job']}
 - Location: {profile['location']}
-- Tools: {', '.join(profile['tools'])}
+- Main tools/software: {', '.join(profile['tools'])}
 {facts_text}
 
-Date: {datetime.now().strftime("%Y-%m-%d")}
-Time: {datetime.now().strftime("%I:%M %p")} PKT"""
+Current date: {datetime.now().strftime("%Y-%m-%d")}
+Current time: {datetime.now().strftime("%I:%M %p")} PKT
+
+Stay in character — be the version of me that's always here, even when I'm not. 💙"""
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
@@ -41,7 +54,7 @@ Time: {datetime.now().strftime("%I:%M %p")} PKT"""
 
     runnable = RunnableWithMessageHistory(
         chain,
-        lambda sid: memory,
+        lambda session_id: memory,  # we pass the same memory object
         input_messages_key="input",
         history_messages_key="chat_history",
     )
