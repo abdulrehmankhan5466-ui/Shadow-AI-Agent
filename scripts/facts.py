@@ -1,7 +1,7 @@
 import json
 import os
 
-DATA_DIR = r"D:\Shadow-AI-Companion\data"
+DATA_DIR = r"D:\Shadow-AI-Companion0\Repositries\Shadow-AI-Agent\data"
 PROFILE_FILE = os.path.join(DATA_DIR, 'user_profile.json')
 
 DEFAULT_PROFILE = {
