@@ -1,10 +1,20 @@
 import streamlit as st
 from datetime import datetime
 import time
+from pathlib import Path
+import json
 
 from facts import load_profile, learn_new_fact, PROFILE_FILE
 from llm import get_runnable
 from langchain_community.chat_message_histories import ChatMessageHistory
+
+# Image generation (add your model path below)
+try:
+    from diffusers import DiffusionPipeline
+    import torch
+except ImportError:
+    DiffusionPipeline = None
+    torch = None
 
 # ────────────────────────────────────────────────
 # Session State
@@ -20,29 +30,53 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "language_mode" not in st.session_state:
-    st.session_state.language_mode = "English"   # default changed to English
+    st.session_state.language_mode = "Mix"
 
 if "temperature" not in st.session_state:
-    st.session_state.temperature = 0.85
+    st.session_state.temperature = 0.75
 
 if "memory_enabled" not in st.session_state:
     st.session_state.memory_enabled = True
 
-# Re-create runnable when needed
+if "nickname" not in st.session_state:
+    st.session_state.nickname = "Abdulrehman"
+
+# Re-create runnable when settings change
 if ("runnable" not in st.session_state or
     st.session_state.get("last_lang") != st.session_state.language_mode or
     st.session_state.get("last_temp") != st.session_state.temperature or
-    st.session_state.get("last_memory") != st.session_state.memory_enabled):
+    st.session_state.get("last_memory") != st.session_state.memory_enabled or
+    st.session_state.get("last_nickname") != st.session_state.nickname):
 
     st.session_state.runnable = get_runnable(
         st.session_state.profile,
         st.session_state.memory if st.session_state.memory_enabled else ChatMessageHistory(),
         st.session_state.language_mode,
-        st.session_state.temperature
+        st.session_state.temperature,
+        st.session_state.nickname
     )
     st.session_state.last_lang = st.session_state.language_mode
     st.session_state.last_temp = st.session_state.temperature
     st.session_state.last_memory = st.session_state.memory_enabled
+    st.session_state.last_nickname = st.session_state.nickname
+
+# Image pipe (cached)
+@st.cache_resource
+def load_image_pipe():
+    if DiffusionPipeline is None:
+        return None
+    # CHANGE THIS PATH TO YOUR MODEL FILE
+    model_path = r"D:\Shadow-AI-Companion0\Repositries\Shadow-AI-Agent\models\flux1-schnell.safetensors"  # ← edit here
+    pipe = DiffusionPipeline.from_single_file(
+        model_path,
+        torch_dtype=torch.float16,
+        use_safetensors=True
+    )
+    pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+    pipe.enable_model_cpu_offload()
+    return pipe
+
+image_pipe = load_image_pipe()
 
 # ────────────────────────────────────────────────
 # Sidebar
@@ -51,32 +85,32 @@ if ("runnable" not in st.session_state or
 st.sidebar.title("Shadow 💙")
 st.sidebar.markdown("Abdulrehman's Shadow")
 
-# Debug facts count
 st.sidebar.caption(f"Loaded facts: {len(st.session_state.profile.get('other_facts', []))}")
 
-if st.sidebar.button("Preview all saved facts"):
-    facts = st.session_state.profile.get("other_facts", [])
-    if facts:
-        st.sidebar.markdown("\n".join(f"- {f}" for f in facts))
-    else:
-        st.sidebar.warning("No facts loaded — check the JSON file")
+# Nickname selector
+nickname_options = ["Abdulrehman", "Maan", "Remi", "Ronnie", "Sharlon", "Random"]
+st.sidebar.selectbox(
+    "Call me",
+    options=nickname_options,
+    index=nickname_options.index(st.session_state.nickname),
+    key="nickname_select"
+)
+st.session_state.nickname = st.session_state.nickname_select
 
 # Memory toggle
 st.sidebar.toggle(
     "Use conversation memory",
     value=st.session_state.memory_enabled,
-    key="memory_toggle",
-    help="When ON → remembers previous messages in this chat\nWhen OFF → treats every message as new (facts still safe)"
+    key="memory_toggle"
 )
 st.session_state.memory_enabled = st.session_state.memory_toggle
 
-# Language selector – simple & reliable
+# Language
 st.sidebar.radio(
     "Reply language",
     options=["English", "Urdu", "Mix"],
     index=["English", "Urdu", "Mix"].index(st.session_state.language_mode),
-    key="lang_radio",
-    horizontal=True
+    key="lang_radio"
 )
 st.session_state.language_mode = st.session_state.lang_radio
 
@@ -88,17 +122,14 @@ st.sidebar.slider(
 )
 st.session_state.temperature = st.session_state.temp_slider
 
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    if st.button("New Chat", use_container_width=True):
-        st.session_state.messages = []
-        st.rerun()
+if st.sidebar.button("New Chat"):
+    st.session_state.messages = []
+    st.rerun()
 
-with col2:
-    if st.button("Clear All", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.memory.clear()
-        st.rerun()
+if st.sidebar.button("Clear All"):
+    st.session_state.messages = []
+    st.session_state.memory.clear()
+    st.rerun()
 
 if st.sidebar.button("What I remember about you"):
     facts = st.session_state.profile.get("other_facts", [])
@@ -107,8 +138,6 @@ if st.sidebar.button("What I remember about you"):
         msg = f"**What I remember about you:**\n\n{facts_md}"
     else:
         msg = "Nothing extra saved yet — tell me more yaar 😄"
-
-    # Prevent duplicate messages
     if not st.session_state.messages or st.session_state.messages[-1]["content"] != msg:
         st.session_state.messages.append({"role": "assistant", "content": msg})
     st.rerun()
@@ -117,7 +146,7 @@ st.sidebar.markdown("---")
 st.sidebar.caption(f"Profile: {PROFILE_FILE}")
 
 # ────────────────────────────────────────────────
-# Main area
+# Main chat
 # ────────────────────────────────────────────────
 
 st.title("Shadow: Abdulrehman's Shadow 💙")
@@ -150,16 +179,42 @@ if prompt := st.chat_input("What's up yaar?"):
             message_placeholder.markdown(full_response)
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
+            # Image generation trigger
+            if any(word in prompt.lower() for word in ["generate image", "make image", "create image", "show me as", "generate me"]):
+                img_prompt = prompt.lower().replace("generate image of", "").replace("make image of", "").replace("create image of", "").strip()
+                if img_prompt and image_pipe:
+                    with st.spinner("Generating image... ~10–40 sec"):
+                        try:
+                            image = image_pipe(
+                                prompt=img_prompt + ", high detail, cinematic lighting",
+                                num_inference_steps=6,
+                                guidance_scale=0.0
+                            ).images[0]
+                            st.image(image, caption=f"Generated: {img_prompt}", use_column_width=True)
+
+                            save_dir = Path("data/generated")
+                            save_dir.mkdir(exist_ok=True)
+                            save_path = save_dir / f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                            image.save(save_path)
+                            st.success(f"Saved → {save_path}")
+                        except Exception as e:
+                            st.error(f"Image failed: {str(e)}")
+
+            # Blender script helper
+            if "blender script" in prompt.lower() or "script for blender" in prompt.lower():
+                st.markdown("**Blender Python script:**")
+                st.code(full_response, language="python")
+                st.info("1. Open Blender\n2. Scripting workspace\n3. New text block\n4. Paste & Run")
+
             # Fact learning
             lower = prompt.lower()
             force = any(x in lower for x in ["wabloo", "save this", "remember that"])
-            triggers = ["i like", "i love", "i hate", "i don't like", "my favorite", "مجھے پسند ہے", "مجھے پسند نہیں"]
-            if force or any(t in lower for t in triggers):
+            if force or any(x in lower for x in ["i like", "مجھے پسند", "i hate", "نہیں پسند", "my favorite"]):
                 if learn_new_fact(st.session_state.profile, prompt.strip()):
-                    st.info("✅ Saved as important fact!", icon="🧠")
+                    st.info("✅ Saved as fact!", icon="🧠")
                     st.rerun()
 
         except Exception as e:
-            err = f"Something went wrong: {str(e)}\nMake sure Ollama is running (`ollama serve`)"
+            err = f"Something broke: {str(e)}\nMake sure Ollama is running"
             st.error(err)
             st.session_state.messages.append({"role": "assistant", "content": err})

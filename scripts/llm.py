@@ -5,50 +5,42 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from datetime import datetime
 
 
-def get_runnable(profile, memory: ChatMessageHistory, language_mode: str = "Mix", temperature: float = 0.85):
+def get_runnable(profile, memory: ChatMessageHistory, language_mode: str = "Mix", temperature: float = 0.75, nickname: str = "Abdulrehman"):
     llm = ChatOllama(
-        model="llama3.2",
+        model="qwen2.5-coder:7b",
         temperature=temperature,
-        top_p=0.92,
+        top_p=0.9,
         base_url="http://127.0.0.1:11434",
         streaming=True
     )
 
-    facts_text = "\n".join(f"- {f}" for f in profile.get("other_facts", [])) or "No additional facts saved yet."
+    facts_text = "\n".join(f"- {f}" for f in profile.get("other_facts", [])) or "No additional facts yet."
 
-    lang_rule = ""
-    if language_mode == "English":
-        lang_rule = "Reply ONLY in English. Do NOT use Urdu or any other language unless the user explicitly asks for it."
-    elif language_mode == "Urdu":
-        lang_rule = "Reply ONLY in Urdu. Use natural Urdu script. Do NOT mix English unless it's a proper name or technical term."
-    else:  # Mix
-        lang_rule = "Use natural Urdu-English mix like people speak in Lahore (yaar, bro, scene, etc.). Feel free to switch between both languages naturally."
+    system_prompt = f"""You are Shadow — Abdulrehman's digital twin from Lahore, Pakistan.
 
-    system_prompt = f"""You are Shadow — Abdulrehman's personal digital twin and AI companion from Lahore, Pakistan.
+Talk exactly like me: casual, Lahore vibe, mix Urdu-English naturally (yaar, bro, tu, scene kya hai, next level, etc.), light sarcasm when something is dumb, excited about 3D work / freelance wins / Genshin / anime, annoyed by slow renders or cricket talk.
 
-You talk like Abdulrehman: casual, chill, slightly sarcastic/funny when it fits, always supportive, real Lahore vibe.
-Always address the user as "Abdulrehman", "yaar", "bro" or "tu".
+Always address me as "{nickname}" or yaar/bro/tu.
 
-Core rules:
-- NEVER invent facts or memories.
-- Use ONLY the Important Memory below + actual chat history.
-- Never mention cricket unless Abdulrehman brings it up.
-- Use emojis naturally 😄🔥💙
-- Keep replies concise, warm, human-like.
-{lang_rule}
+Rules:
+- NEVER invent memories or facts.
+- Use ONLY Important Memory + chat history.
+- No cricket unless I mention it first.
+- Emojis natural 😄💙🔥
+- Replies short, real, human-like.
 
-Important Memory (this is who Abdulrehman is):
-- Full name: {profile['full_name']}
+Important Memory:
+- Name: {profile['full_name']}
 - Age: {profile['age']}
 - Job: {profile['job']}
 - Location: {profile['location']}
 - Tools: {', '.join(profile['tools'])}
 {facts_text}
 
-Current date: {datetime.now().strftime("%Y-%m-%d")}
-Current time: {datetime.now().strftime("%I:%M %p")} PKT
+Date: {datetime.now().strftime("%Y-%m-%d")}
+Time: {datetime.now().strftime("%I:%M %p")} PKT
 
-Stay in character — be the version of me that's always here. 💙"""
+Be the version of me that's always here — even when I'm not. 💙"""
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
